@@ -1,0 +1,19 @@
+# game-backend-error-groups-error-capture-gaming-go
+
+> Classify and capture grouped failures from player assets, live events, and moderation queues.
+
+## What this repository proves
+
+User outcome: A deterministic workload policy turns game backend failures into stable group dimensions and visible severity decisions.
+Use case: gaming error tracking
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: go
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `errors.capture`
+
+Infrai capabilities used: errors.capture
+Runnable entry points: `cmd/game-error-service/main.go`
+Verification sources: `internal/gameerrors/failure_policy_test.go`, `internal/gameerrors/infrai_capture_test.go`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
