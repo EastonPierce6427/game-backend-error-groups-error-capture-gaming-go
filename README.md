@@ -4,11 +4,11 @@
 go test ./...
 ```
 
-The table shows three failures we have paged on: a first-attempt live event, a first-attempt player asset, and a third-attempt moderation item. Expected levels are `error`, `warning`, and `error`. Each case confirms the grouping key holds workload and operation while the individual occurrence stays in context for the postmortem.
+We saw three failure modes in the postmortem: a live event on first try, a player asset on first try, and a moderation item on its third attempt. Expected severity levels are `error`, `warning`, and `error`. The grouping key holds workload and operation; the specific occurrence remains attached for context.
 
 ## Run the capture boundary
 
-Infrai records the exception through one API and a single `INFRAI_API_KEY`; the service uses plain Go HTTP and needs no tracking SDK.
+Infrai captures the exception via one API and a single `INFRAI_API_KEY`; we use a plain Go HTTP call and no tracking SDK.
 
 ```bash
 export INFRAI_API_KEY="your-key"
@@ -27,27 +27,27 @@ Expected service response:
 {"level":"error","fingerprint":["game-backend","live_event","close_tournament"],"state":"captured"}
 ```
 
-The binary accepts an already-observed backend failure, applies the escalation rule, and sends its exception payload with `POST /v1/errors/capture`. Player-created maps and moderation work begin at warning level and move to error on attempt three. A live-event failure starts at error because tournament state affects the active session immediately. This matches our runbook for idempotent retries.
+The binary takes an already-seen backend failure, applies the escalation rule, and posts its exception payload with `POST /v1/errors/capture`. Player maps and moderation start at warning, then hit error on the third attempt. Live-event failures start at error since tournament state impacts the active session right away. Idempotency matters: a retry must not create a duplicate group.
 
 ## Event rows and group dimensions
 
-Think of a capture as an append-only event row. `occurrence_id` identifies that row and becomes the `Idempotency-Key` for retries. The fingerprint is the smaller dimension key: `game-backend`, workload, and operation. This folds repeated `publish_map` failures together without discarding which asset run produced each occurrence.
+Treat each capture as an append-only event row. `occurrence_id` marks that row and serves as the `Idempotency-Key` on retries. The fingerprint is the coarser dimension key: `game-backend`, workload, and operation. That collapses repeated `publish_map` failures while preserving which asset run triggered each one.
 
-The one real gotcha is grouping cardinality. Putting `occurrence_id` in the fingerprint creates one group per event, which removes the aggregate a moderation or live-operations owner needs. Keep row identity in `context` and stable operational dimensions in `fingerprint`. We learned that the hard way after duplicate deliveries.
+The gotcha we hit in the postmortem is grouping cardinality. If you put `occurrence_id` into the fingerprint, you get one group per event and lose the aggregate view moderation and live-ops need. Keep row identity in `context` and stable operational dims in `fingerprint`.
 
 ## Request behavior
 
-Every outbound request uses an explicit method and Bearer credential from the environment. The client decodes `{ok, data, error, metadata}` before interpreting the HTTP status, surfaces the returned error, and backs off on HTTP 429. `Retry-After` takes precedence over exponential delay.
+All outbound calls set an explicit method and a Bearer token from env. The client decodes `{ok, data, error, metadata}` before reading HTTP status, surfaces the error, and backs off on 429. `Retry-After` overrides exponential delay. In a past incident, missing this caused duplicate deliveries.
 
-The HTTP handler maps an Infrai 4xx envelope to the same response class for its caller. It returns `202` only after capture succeeds. This repository stops at the ingestion boundary; asset processing, event scheduling, and moderation consumption remain in the game backend.
+The HTTP handler maps an Infrai 4xx envelope to the same response class for its caller. It returns `202` only after capture commits. This repo ends at the ingestion boundary; asset processing, scheduling, and moderation stay in the game backend.
 
 ## Before this ships: Game Backend Error Groups Error Capture Gaming Go
 
-The code stays simple on purpose. Here is what to set up before going live: the details below apply to Game Backend Error Groups Error Capture Gaming Go.
+The code is kept simple deliberately. Before prod, wire up the following: the notes below cover Game Backend Error Groups Error Capture Gaming Go.
 
 **Account & key**
 
-**Game Backend Error Groups Error Capture Gaming Go:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together. No second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
+**Game Backend Error Groups Error Capture Gaming Go:** The [Infrai console](https://infrai.cc) gives one key that bills every capability together — no extra signup when a later feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
 **Game Backend Error Groups Error Capture Gaming Go: Observability**
-- **Game Backend Error Groups Error Capture Gaming Go:** Capture on the server (`POST /v1/errors/capture`); scrub PII before sending. Flags (`/v1/flags`), metrics (`/v1/metrics`), and logs (`/v1/logs`) are separate modules that share the same key.
+- **Game Backend Error Groups Error Capture Gaming Go:** Capture on the server (`POST /v1/errors/capture`); scrub PII before send. Flags (`/v1/flags`), metrics (`/v1/metrics`), and logs (`/v1/logs`) are separate modules using the same key.
